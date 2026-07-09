@@ -13,7 +13,7 @@
         "steam_disk_space"
     ],
     "docker_images": {
-        "ModSharp WS (SteamRT3)": "ghcr.io/unsi-leader-ai/egg-modsharp:latest"
+        "ModSharp WS - SteamRT3": "ghcr.io/unsi-leader-ai/egg-modsharp:latest"
     },
     "file_denylist": [],
     "startup": "./game/cs2.sh -dedicated +ip 0.0.0.0 -port {{SERVER_PORT}} +map {{SRCDS_MAP}} -maxplayers {{SRCDS_MAXPLAYERS}} +sv_setsteamaccount {{STEAM_ACC}}",
