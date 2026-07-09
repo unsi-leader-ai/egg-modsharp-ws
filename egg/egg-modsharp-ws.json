@@ -7,7 +7,7 @@
     "exported_at": "2026-07-09T16:00:00+02:00",
     "name": "Modsharp WS",
     "author": "wase7@wase7.com",
-    "description": "Counter-Strike 2 dedicated server with the ModSharp framework on Steam RT3 (sniper). Pinned ModSharp binaries (MODSHARP_VERSION), automatic gamedata refresh from master, portable .NET runtime (DOTNET_CHANNEL), optional -dual_addon flag.",
+    "description": "Counter-Strike 2 dedicated server with the ModSharp framework on Steam RT3 (sniper). Pinned ModSharp binaries (MODSHARP_VERSION), automatic gamedata refresh from master, portable .NET runtime (DOTNET_CHANNEL), optional -dual_addon flag. | PRIVATE egg by wase7 — third-party use not permitted; provided AS IS, no warranty, no liability (see repo LICENSE).",
     "features": [
         "gsl_token",
         "steam_disk_space"

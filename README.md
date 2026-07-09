@@ -1,5 +1,16 @@
 # Modsharp WS — Pterodactyl Egg for CS2 + ModSharp
 
+> [!WARNING]
+> **Private project — not for third-party use.** This repository, the egg, its
+> scripts and the container image `ghcr.io/unsi-leader-ai/egg-modsharp` are
+> published solely for our own infrastructure. **Use by anyone else is not
+> permitted** — see [LICENSE](LICENSE). Everything is provided **AS IS**,
+> without warranty of any kind, and we accept **no liability whatsoever** for
+> any damage or loss arising from it. Among other things it modifies game
+> files (`gameinfo.gi`), installs third-party software and self-updates —
+> running it can break your server. If you use it anyway, contrary to the
+> license, you do so entirely at your own risk.
+
 A Pterodactyl egg and Docker image for running a Counter-Strike 2 dedicated
 server with the [ModSharp](https://github.com/Kxnrl/modsharp-public) framework
 on Steam RT3 (sniper).
