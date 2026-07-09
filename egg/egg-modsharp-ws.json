@@ -4,7 +4,7 @@
         "version": "PTDL_v2",
         "update_url": null
     },
-    "exported_at": "2026-07-09T20:30:00+02:00",
+    "exported_at": "2026-07-09T21:30:00+02:00",
     "name": "Modsharp WS",
     "author": "wase7@wase7.com",
     "description": "Counter-Strike 2 dedicated server with the ModSharp framework on Steam RT3 (sniper). Pinned ModSharp binaries (MODSHARP_VERSION), automatic gamedata refresh from master, portable .NET runtime (DOTNET_CHANNEL), optional -dual_addon flag. | PRIVATE egg by wase7 — third-party use not permitted; provided AS IS, no warranty, no liability (see repo LICENSE).",
@@ -68,7 +68,7 @@
             "default_value": "0",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string|regex:/^[0-9]{1,2}$/",
+            "rules": "required|numeric",
             "field_type": "text"
         },
         {
@@ -78,7 +78,7 @@
             "default_value": "0",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string|regex:/^[0-9]{1,2}$/",
+            "rules": "required|numeric",
             "field_type": "text"
         },
         {
@@ -148,7 +148,7 @@
             "default_value": "",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string|regex:/^[0-9]*$/",
+            "rules": "nullable|numeric",
             "field_type": "text"
         },
         {
@@ -158,7 +158,7 @@
             "default_value": "",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string|regex:/^[A-Fa-f0-9]{32}$/",
+            "rules": "nullable|string|max:32",
             "field_type": "text"
         },
         {
@@ -188,7 +188,7 @@
             "default_value": "",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string|max:256|regex:/^[A-Za-z0-9_+\\-.:\\/ ]*$/",
+            "rules": "nullable|string|max:256",
             "field_type": "text"
         }
     ]
