@@ -226,28 +226,58 @@ fi
 # ---------------------------------------------------------------------------
 # 6. build the final startup line and run the server
 # ---------------------------------------------------------------------------
+# The startup line goes through eval below — every panel-set variable that is
+# expanded into it is format-validated first (defense in depth on top of the
+# egg's Laravel rules), so panel values can't inject commands. Values that
+# fail their allowlist are blanked and the dangling flag is dropped further
+# down.
+if [ -n "${DUAL_ADDON}" ] && ! [[ "${DUAL_ADDON}" =~ ^[0-9]+$ ]]; then
+    msg "WARNING: DUAL_ADDON '${DUAL_ADDON}' is not a numeric workshop ID — omitting -dual_addon."
+    DUAL_ADDON=""
+fi
+if [ -n "${GAME_TYPE}" ] && ! [[ "${GAME_TYPE}" =~ ^[0-9]{1,2}$ ]]; then
+    msg "WARNING: GAME_TYPE '${GAME_TYPE}' is not numeric — using 0."
+    GAME_TYPE="0"
+fi
+if [ -n "${GAME_MODE}" ] && ! [[ "${GAME_MODE}" =~ ^[0-9]{1,2}$ ]]; then
+    msg "WARNING: GAME_MODE '${GAME_MODE}' is not numeric — using 0."
+    GAME_MODE="0"
+fi
+EXTRA_ARGS_RE='^[A-Za-z0-9_+.:/ -]*$'
+if [ -n "${EXTRA_ARGS}" ] && ! [[ "${EXTRA_ARGS}" =~ ${EXTRA_ARGS_RE} ]]; then
+    msg "WARNING: EXTRA_ARGS contains characters outside [A-Za-z0-9_+.:/ -] — ignored."
+    EXTRA_ARGS=""
+fi
+
 MODIFIED_STARTUP=$(eval echo "$(echo "${STARTUP}" | sed -e 's/{{/${/g' -e 's/}}/}/g')")
 
-# The startup line goes through eval below — every appended variable is either
-# format-validated here (defense in depth on top of the egg's Laravel rules)
-# or shell-escaped, so panel-set values can't inject commands.
-if [ -n "${DUAL_ADDON}" ]; then
-    if [[ "${DUAL_ADDON}" =~ ^[0-9]+$ ]]; then
-        MODIFIED_STARTUP="${MODIFIED_STARTUP} -dual_addon ${DUAL_ADDON}"
-    else
-        msg "WARNING: DUAL_ADDON '${DUAL_ADDON}' is not a numeric workshop ID — omitting -dual_addon."
-    fi
-fi
+# Drop any value-flag whose panel variable ended up empty — a dangling
+# "-dual_addon" or "+game_type" would swallow the following argument. This
+# also cleans stale lines from a previous egg whose variables no longer exist.
+read -ra tokens <<< "${MODIFIED_STARTUP}"
+cleaned=()
+i=0
+while [ "${i}" -lt "${#tokens[@]}" ]; do
+    tok="${tokens[${i}]}"
+    next="${tokens[$((i + 1))]:-}"
+    case "${tok}" in
+        -dual_addon|-authkey|+sv_setsteamaccount|+game_type|+game_mode|+map|-maxplayers)
+            if [ -z "${next}" ] || [[ "${next}" == [-+]* ]]; then
+                msg "startup: '${tok}' has no value — flag dropped."
+                i=$((i + 1))
+                continue
+            fi
+            ;;
+    esac
+    cleaned+=("${tok}")
+    i=$((i + 1))
+done
+MODIFIED_STARTUP="${cleaned[*]}"
+
+# The authkey is a Steam Web API key — kept out of the visible startup line
+# on purpose; appended shell-escaped instead.
 if [ -n "${STEAM_AUTHKEY}" ]; then
     MODIFIED_STARTUP="${MODIFIED_STARTUP} -authkey $(printf '%q' "${STEAM_AUTHKEY}")"
-fi
-if [ -n "${EXTRA_ARGS}" ]; then
-    EXTRA_ARGS_RE='^[A-Za-z0-9_+.:/ -]*$'
-    if [[ "${EXTRA_ARGS}" =~ ${EXTRA_ARGS_RE} ]]; then
-        MODIFIED_STARTUP="${MODIFIED_STARTUP} ${EXTRA_ARGS}"
-    else
-        msg "WARNING: EXTRA_ARGS contains characters outside [A-Za-z0-9_+.:/ -] — ignored."
-    fi
 fi
 
 echo ":/home/container$ ${MODIFIED_STARTUP}"

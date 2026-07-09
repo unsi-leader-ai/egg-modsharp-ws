@@ -4,7 +4,7 @@
         "version": "PTDL_v2",
         "update_url": null
     },
-    "exported_at": "2026-07-09T16:00:00+02:00",
+    "exported_at": "2026-07-09T20:30:00+02:00",
     "name": "Modsharp WS",
     "author": "wase7@wase7.com",
     "description": "Counter-Strike 2 dedicated server with the ModSharp framework on Steam RT3 (sniper). Pinned ModSharp binaries (MODSHARP_VERSION), automatic gamedata refresh from master, portable .NET runtime (DOTNET_CHANNEL), optional -dual_addon flag. | PRIVATE egg by wase7 — third-party use not permitted; provided AS IS, no warranty, no liability (see repo LICENSE).",
@@ -16,7 +16,7 @@
         "ModSharp WS - SteamRT3": "ghcr.io/unsi-leader-ai/egg-modsharp:latest"
     },
     "file_denylist": [],
-    "startup": "./game/cs2.sh -dedicated +ip 0.0.0.0 -port {{SERVER_PORT}} +map {{SRCDS_MAP}} -maxplayers {{SRCDS_MAXPLAYERS}} +sv_setsteamaccount {{STEAM_ACC}}",
+    "startup": "./game/cs2.sh -dedicated +ip 0.0.0.0 -port {{SERVER_PORT}} +map {{SRCDS_MAP}} -maxplayers {{SRCDS_MAXPLAYERS}} +sv_setsteamaccount {{STEAM_ACC}} +game_type {{GAME_TYPE}} +game_mode {{GAME_MODE}} -dual_addon {{DUAL_ADDON}} {{EXTRA_ARGS}}",
     "config": {
         "files": "{}",
         "startup": "{\"done\": \"Connection to Steam servers successful\"}",
@@ -59,6 +59,26 @@
             "user_viewable": true,
             "user_editable": true,
             "rules": "required|string|alpha_dash",
+            "field_type": "text"
+        },
+        {
+            "name": "Game Type",
+            "description": "+game_type — together with Game Mode selects the mode: 0/0 casual, 0/1 competitive, 0/2 wingman, 1/0 arms race, 1/2 deathmatch, 3/0 custom.",
+            "env_variable": "GAME_TYPE",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|regex:/^[0-9]{1,2}$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Game Mode",
+            "description": "+game_mode — together with Game Type selects the mode: 0/0 casual, 0/1 competitive, 0/2 wingman, 1/0 arms race, 1/2 deathmatch, 3/0 custom.",
+            "env_variable": "GAME_MODE",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|regex:/^[0-9]{1,2}$/",
             "field_type": "text"
         },
         {
@@ -123,7 +143,7 @@
         },
         {
             "name": "Dual Addon (Workshop ID)",
-            "description": "Single workshop addon ID passed as '-dual_addon <id>'. Leave empty to omit the flag entirely.",
+            "description": "Single workshop addon ID passed as '-dual_addon <id>' in the startup line. Leave empty to run without the flag (it is removed automatically at start).",
             "env_variable": "DUAL_ADDON",
             "default_value": "",
             "user_viewable": true,
@@ -163,7 +183,7 @@
         },
         {
             "name": "Extra Args",
-            "description": "Free text appended to the end of the startup line (e.g. +sv_hibernate_when_empty 0). Allowed characters: letters, digits, space and _+-.:/",
+            "description": "Free text at the end of the startup line (e.g. +sv_hibernate_when_empty 0). Allowed characters: letters, digits, space and _+-.:/",
             "env_variable": "EXTRA_ARGS",
             "default_value": "",
             "user_viewable": true,

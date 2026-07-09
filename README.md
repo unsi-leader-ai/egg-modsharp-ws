@@ -39,9 +39,12 @@ on Steam RT3 (sniper).
 5. **.NET runtime** — the portable runtime lives in `game/sharp/runtime`
    (Steam RT3 cannot use a system-wide .NET); reinstalled only when
    `DOTNET_CHANNEL` changes
-6. The startup line is assembled: `-dual_addon <id>` is appended only when
-   `DUAL_ADDON` is non-empty, `-authkey` only when `STEAM_AUTHKEY` is set,
-   and `EXTRA_ARGS` verbatim at the end
+6. The startup line is finalized: all parameters (`GAME_TYPE`, `GAME_MODE`,
+   `DUAL_ADDON`, `EXTRA_ARGS`, …) live as placeholders in the panel's startup
+   command, so changing a variable is reflected there immediately. Values are
+   format-validated, flags whose variable is empty are dropped (no dangling
+   `-dual_addon`), and `-authkey` is appended shell-escaped only when
+   `STEAM_AUTHKEY` is set (kept out of the visible line on purpose)
 
 A failed download in steps 3–5 keeps the existing installation and the server
 still starts.
@@ -56,6 +59,7 @@ still starts.
 | `SRCDS_STOP_UPDATE` | `0` | `1` = skip the CS2 update on start |
 | `SRCDS_VALIDATE` | `0` | SteamCMD `validate` (may reset modified files) |
 | `SRCDS_APPID` | `730` | not editable |
+| `GAME_TYPE` / `GAME_MODE` | `0` / `0` | `+game_type` / `+game_mode` (0/0 casual, 0/1 competitive, 0/2 wingman, 1/0 arms race, 1/2 deathmatch, 3/0 custom) |
 | `MODSHARP_VERSION` | `git-132` | pinned release tag; change + restart to update |
 | `MODSHARP_GAMEDATA_UPDATE` | `1` | gamedata refresh from master on every start |
 | `DOTNET_CHANNEL` | `10.0` | .NET runtime channel (set `11.0` to switch later) |
