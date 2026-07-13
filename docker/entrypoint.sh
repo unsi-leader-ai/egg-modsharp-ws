@@ -203,23 +203,38 @@ if [ "${DOTNET_CHANNEL}" = "${installed_dotnet}" ] && [ -x "${SHARP_DIR}/runtime
     msg ".NET channel ${installed_dotnet} already installed."
 else
     msg "Installing .NET runtime channel ${DOTNET_CHANNEL} (installed: ${installed_dotnet})..."
-    if curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh; then
+    # dotnet-install.sh downloads AND unpacks into ${TMPDIR:-/tmp}, but the
+    # container's /tmp is a small tmpfs (Wings default: 100 MiB) — tarball +
+    # extracted runtime need ~110 MiB, so extraction dies there with
+    # "tar: Cannot write: No space left on device". Stage on the volume instead.
+    dotnet_tmp="/home/container/.dotnet-tmp"
+    dotnet_ok=0
+    rm -rf "${SHARP_DIR}/runtime.new" "${dotnet_tmp}"
+    mkdir -p "${dotnet_tmp}"
+    if curl -fsSL --connect-timeout 10 --max-time 60 -o "${dotnet_tmp}/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh; then
         # Install into a staging dir on the same volume and swap in only after
         # success — the old runtime survives every failure mode, and exactly
-        # one channel remains after the rename.
-        rm -rf "${SHARP_DIR}/runtime.new"
-        if bash /tmp/dotnet-install.sh --channel "${DOTNET_CHANNEL}" --runtime dotnet \
-            --install-dir "${SHARP_DIR}/runtime.new" --no-path; then
-            rm -rf "${SHARP_DIR}/runtime"
-            mv "${SHARP_DIR}/runtime.new" "${SHARP_DIR}/runtime"
+        # one channel remains after the rename. The marker is only written on
+        # success, so the next start retries a failed install.
+        if TMPDIR="${dotnet_tmp}" bash "${dotnet_tmp}/dotnet-install.sh" \
+                --channel "${DOTNET_CHANNEL}" --runtime dotnet \
+                --install-dir "${SHARP_DIR}/runtime.new" --no-path \
+           && rm -rf "${SHARP_DIR}/runtime" \
+           && mv "${SHARP_DIR}/runtime.new" "${SHARP_DIR}/runtime"; then
             echo "${DOTNET_CHANNEL}" > "${DOTNET_MARKER}"
+            dotnet_ok=1
             msg ".NET ${DOTNET_CHANNEL} installed to game/sharp/runtime."
-        else
-            rm -rf "${SHARP_DIR}/runtime.new"
-            msg "WARNING: dotnet-install failed — keeping existing runtime."
         fi
     else
-        msg "WARNING: could not fetch dotnet-install.sh — keeping existing runtime."
+        msg "WARNING: could not fetch dotnet-install.sh."
+    fi
+    rm -rf "${SHARP_DIR}/runtime.new" "${dotnet_tmp}"
+    if [ "${dotnet_ok}" != "1" ]; then
+        if [ -x "${SHARP_DIR}/runtime/dotnet" ]; then
+            msg "WARNING: .NET ${DOTNET_CHANNEL} install failed — continuing server start with the existing runtime (install is retried on next start)."
+        else
+            msg "WARNING: .NET ${DOTNET_CHANNEL} install failed and no runtime is present — ModSharp will not load; starting CS2 anyway (install is retried on next start)."
+        fi
     fi
 fi
 

@@ -76,10 +76,25 @@ rm -rf "${work}"
 # ---------------------------------------------------------------------------
 # 3. Portable .NET runtime (RT3 cannot use a system-wide .NET)
 # ---------------------------------------------------------------------------
+# Non-fatal despite set -e: a failure here must not fail the whole install —
+# the entrypoint retries on every start (the marker below is only written on
+# success). TMPDIR stays on the volume: dotnet-install.sh downloads and
+# unpacks into ${TMPDIR:-/tmp}, and a tmpfs /tmp is too small for the
+# ~110 MiB of tarball + extracted runtime.
 echo "== Installing .NET runtime channel ${DOTNET_CHANNEL}..."
-curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh
-bash /tmp/dotnet-install.sh --channel "${DOTNET_CHANNEL}" --runtime dotnet \
-    --install-dir "${SHARP_DIR}/runtime" --no-path
+dotnet_tmp="/mnt/server/.dotnet-tmp"
+dotnet_ok=0
+rm -rf "${dotnet_tmp}"
+mkdir -p "${dotnet_tmp}"
+if curl -fsSL --connect-timeout 10 --max-time 60 -o "${dotnet_tmp}/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh \
+   && TMPDIR="${dotnet_tmp}" bash "${dotnet_tmp}/dotnet-install.sh" \
+        --channel "${DOTNET_CHANNEL}" --runtime dotnet \
+        --install-dir "${SHARP_DIR}/runtime" --no-path; then
+    dotnet_ok=1
+else
+    echo "== WARNING: .NET runtime install failed — the entrypoint retries it on every server start."
+fi
+rm -rf "${dotnet_tmp}"
 
 # ---------------------------------------------------------------------------
 # 4. gameinfo.gi patch ('Game sharp' after Game_LowViolence)
@@ -114,6 +129,9 @@ fi
 # 5. Version markers for the entrypoint
 # ---------------------------------------------------------------------------
 echo "${MODSHARP_VERSION}" > /mnt/server/.ms-version
-echo "${DOTNET_CHANNEL}" > /mnt/server/.dotnet-channel
-
-echo "== Install complete: CS2 + ModSharp ${MODSHARP_VERSION} + .NET ${DOTNET_CHANNEL}."
+if [ "${dotnet_ok}" = "1" ]; then
+    echo "${DOTNET_CHANNEL}" > /mnt/server/.dotnet-channel
+    echo "== Install complete: CS2 + ModSharp ${MODSHARP_VERSION} + .NET ${DOTNET_CHANNEL}."
+else
+    echo "== Install complete: CS2 + ModSharp ${MODSHARP_VERSION} — .NET pending (installed at first start)."
+fi
