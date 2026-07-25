@@ -4,7 +4,9 @@
 # Runs on every server start, in this fixed order:
 #   1. CS2 update via SteamCMD          (skipped when SRCDS_STOP_UPDATE=1)
 #   2. gameinfo.gi re-patch             (idempotent; CS2 updates overwrite it)
-#   3. ModSharp binaries + extensions   (only when MODSHARP_VERSION != marker;
+#   3. ModSharp binaries + extensions   (MODSHARP_CUSTOM_URL > MODSHARP_VERSION;
+#                                        both empty = binaries never touched;
+#                                        install only when target != marker;
 #                                        sharp/configs + sharp/modules are never
 #                                        overwritten, only seeded when missing)
 #   4. gamedata refresh from master     (when MODSHARP_GAMEDATA_UPDATE=1)
@@ -97,32 +99,73 @@ fi
 # 3. ModSharp binaries + extensions (pinned via MODSHARP_VERSION)
 # ---------------------------------------------------------------------------
 MODSHARP_VERSION="${MODSHARP_VERSION:-}"
+MODSHARP_CUSTOM_URL="${MODSHARP_CUSTOM_URL:-}"
+MODSHARP_CUSTOM_EXT_URL="${MODSHARP_CUSTOM_EXT_URL:-}"
 installed_ms="$(cat "${MS_MARKER}" 2>/dev/null || echo none)"
 
-if [ -z "${MODSHARP_VERSION}" ]; then
-    # Empty version = never touch the installed binaries (custom builds stay
-    # safe). Fresh installs get the latest release via the install script.
-    msg "MODSHARP_VERSION empty — ModSharp binaries left untouched (installed: ${installed_ms})."
+if [ -n "${MODSHARP_CUSTOM_URL}" ] && ! [[ "${MODSHARP_CUSTOM_URL}" =~ ^https?:// ]]; then
+    msg "WARNING: MODSHARP_CUSTOM_URL is not an http(s) URL — ignored."
+    MODSHARP_CUSTOM_URL=""
+fi
+if [ -n "${MODSHARP_CUSTOM_EXT_URL}" ] && ! [[ "${MODSHARP_CUSTOM_EXT_URL}" =~ ^https?:// ]]; then
+    msg "WARNING: MODSHARP_CUSTOM_EXT_URL is not an http(s) URL — ignored."
+    MODSHARP_CUSTOM_EXT_URL=""
+fi
+
+# Which ModSharp should be on disk? A custom-build URL wins over a release
+# tag; both empty = never touch the installed binaries (e.g. SFTP-deployed
+# custom builds stay safe). The marker stores this exact string, so changing
+# the URL or the tag triggers a reinstall on the next start.
+ms_target=""
+if [ -n "${MODSHARP_CUSTOM_URL}" ]; then
+    ms_target="custom:${MODSHARP_CUSTOM_URL}|${MODSHARP_CUSTOM_EXT_URL}"
+    [ -n "${MODSHARP_VERSION}" ] && msg "MODSHARP_CUSTOM_URL set — takes precedence over MODSHARP_VERSION '${MODSHARP_VERSION}'."
+elif [ -n "${MODSHARP_VERSION}" ]; then
+    ms_target="${MODSHARP_VERSION}"
+fi
+
+if [ -z "${ms_target}" ]; then
+    msg "MODSHARP_VERSION and MODSHARP_CUSTOM_URL empty — ModSharp binaries left untouched (installed: ${installed_ms})."
 elif [ "${installed_ms}" = "none" ] && [ -d "${SHARP_DIR}/bin" ]; then
     msg "WARNING: existing ModSharp install found without a version marker (egg switch without reinstall?)."
-    msg "WARNING: framework files (bin/core/shared/locales/gamedata) will be overwritten with ${MODSHARP_VERSION}."
+    msg "WARNING: framework files (bin/core/shared/locales/gamedata) will be overwritten with ${ms_target}."
     msg "WARNING: if a newer/custom build is installed, write its tag into .ms-version instead to keep it."
 fi
 
-if [ -z "${MODSHARP_VERSION}" ]; then
+if [ -z "${ms_target}" ]; then
     : # handled above
-elif [ "${MODSHARP_VERSION}" = "${installed_ms}" ]; then
+elif [ "${ms_target}" = "${installed_ms}" ]; then
     msg "ModSharp ${installed_ms} already installed."
 else
-    msg "Installing ModSharp ${MODSHARP_VERSION} (installed: ${installed_ms})..."
-    asset="ModSharp-${MODSHARP_VERSION//-/}-linux"
-    base_url="https://github.com/${MS_REPO}/releases/download/${MODSHARP_VERSION}"
+    msg "Installing ModSharp ${ms_target} (installed: ${installed_ms})..."
     work="$(mktemp -d)"
+    mkdir -p "${work}/ext"
+    fetch_ok=1
 
-    if curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${base_url}/${asset}.zip" \
-       && curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${base_url}/${asset}-extensions.zip" \
-       && unzip -qo "${work}/main.zip" -d "${work}/main" \
-       && unzip -qo "${work}/ext.zip" -d "${work}/ext"; then
+    if [ -n "${MODSHARP_CUSTOM_URL}" ]; then
+        # Custom build: main zip in the official layout (contains sharp/),
+        # plus an optional extensions zip (one folder per extension).
+        curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${MODSHARP_CUSTOM_URL}" \
+            && unzip -qo "${work}/main.zip" -d "${work}/main" || fetch_ok=0
+        if [ "${fetch_ok}" = "1" ] && [ -n "${MODSHARP_CUSTOM_EXT_URL}" ]; then
+            curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${MODSHARP_CUSTOM_EXT_URL}" \
+                && unzip -qo "${work}/ext.zip" -d "${work}/ext" || fetch_ok=0
+        fi
+    else
+        asset="ModSharp-${ms_target//-/}-linux"
+        base_url="https://github.com/${MS_REPO}/releases/download/${ms_target}"
+        curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${base_url}/${asset}.zip" \
+            && curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${base_url}/${asset}-extensions.zip" \
+            && unzip -qo "${work}/main.zip" -d "${work}/main" \
+            && unzip -qo "${work}/ext.zip" -d "${work}/ext" || fetch_ok=0
+    fi
+
+    if [ "${fetch_ok}" = "1" ] && [ ! -d "${work}/main/sharp" ]; then
+        msg "WARNING: downloaded archive does not contain a sharp/ folder — wrong zip?"
+        fetch_ok=0
+    fi
+
+    if [ "${fetch_ok}" = "1" ]; then
 
         mkdir -p "${SHARP_DIR}"
         deploy_ok=1
@@ -157,13 +200,13 @@ else
         done
 
         if [ "${deploy_ok}" = "1" ]; then
-            echo "${MODSHARP_VERSION}" > "${MS_MARKER}"
-            msg "ModSharp ${MODSHARP_VERSION} installed."
+            echo "${ms_target}" > "${MS_MARKER}"
+            msg "ModSharp ${ms_target} installed."
         else
-            msg "WARNING: ModSharp ${MODSHARP_VERSION} deploy incomplete (rsync failed) — marker NOT updated, install is retried on next start."
+            msg "WARNING: ModSharp ${ms_target} deploy incomplete (rsync failed) — marker NOT updated, install is retried on next start."
         fi
     else
-        msg "WARNING: download/extract of ModSharp ${MODSHARP_VERSION} failed — keeping ${installed_ms}."
+        msg "WARNING: download/extract of ModSharp ${ms_target} failed — keeping ${installed_ms}."
     fi
     rm -rf "${work}"
 fi

@@ -55,39 +55,78 @@ cp -f linux64/steamclient.so /mnt/server/.steam/sdk64/steamclient.so
 # ---------------------------------------------------------------------------
 # 2. ModSharp + extensions
 # ---------------------------------------------------------------------------
-# No pinned version set → resolve the latest release tag. A fresh install
-# needs SOME ModSharp; the entrypoint later leaves the binaries untouched
-# as long as MODSHARP_VERSION stays empty.
-if [ -z "${MODSHARP_VERSION}" ]; then
-    echo "== MODSHARP_VERSION empty — resolving latest ModSharp release..."
-    MODSHARP_VERSION="$(curl -fsSL --connect-timeout 10 --max-time 30 \
-        "https://api.github.com/repos/${MS_REPO}/releases/latest" \
-        | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')" || true
-    if [ -z "${MODSHARP_VERSION}" ]; then
-        echo "== ERROR: could not resolve the latest ModSharp release (GitHub API unreachable?)."
-        echo "== Set the 'ModSharp Version' variable to a release tag (e.g. git-178) and reinstall."
+# Source precedence: MODSHARP_CUSTOM_URL (self-compiled build) > MODSHARP_VERSION
+# (pinned release) > latest release. The marker written in step 5 mirrors the
+# entrypoint's logic, so the first start does not reinstall.
+if [ -n "${MODSHARP_CUSTOM_URL:-}" ]; then
+    if ! [[ "${MODSHARP_CUSTOM_URL}" =~ ^https?:// ]]; then
+        echo "== ERROR: MODSHARP_CUSTOM_URL must be an http(s) URL."
         exit 1
     fi
-    echo "== Latest ModSharp release: ${MODSHARP_VERSION}"
+    if [ -n "${MODSHARP_CUSTOM_EXT_URL:-}" ] && ! [[ "${MODSHARP_CUSTOM_EXT_URL}" =~ ^https?:// ]]; then
+        echo "== ERROR: MODSHARP_CUSTOM_EXT_URL must be an http(s) URL."
+        exit 1
+    fi
+    ms_label="custom build"
+    ms_marker="custom:${MODSHARP_CUSTOM_URL}|${MODSHARP_CUSTOM_EXT_URL:-}"
+
+    echo "== Installing ModSharp custom build from MODSHARP_CUSTOM_URL..."
+    work="$(mktemp -d)"
+    curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${MODSHARP_CUSTOM_URL}"
+
+    # Custom main zip must use the official layout (contains sharp/).
+    mkdir -p /mnt/server/game
+    unzip -qo "${work}/main.zip" -d /mnt/server/game
+    if [ ! -d "${SHARP_DIR}" ]; then
+        echo "== ERROR: custom build zip does not contain a sharp/ folder — wrong archive?"
+        exit 1
+    fi
+
+    # Optional matching extensions zip (one folder per extension).
+    if [ -n "${MODSHARP_CUSTOM_EXT_URL:-}" ]; then
+        curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${MODSHARP_CUSTOM_EXT_URL}"
+        mkdir -p "${SHARP_DIR}/shared"
+        unzip -qo "${work}/ext.zip" -d "${work}/ext"
+        rsync -a "${work}/ext/" "${SHARP_DIR}/shared/"
+    fi
+    rm -rf "${work}"
+else
+    # No pinned version set → resolve the latest release tag. A fresh install
+    # needs SOME ModSharp; the entrypoint later leaves the binaries untouched
+    # as long as MODSHARP_VERSION stays empty.
+    if [ -z "${MODSHARP_VERSION}" ]; then
+        echo "== MODSHARP_VERSION empty — resolving latest ModSharp release..."
+        MODSHARP_VERSION="$(curl -fsSL --connect-timeout 10 --max-time 30 \
+            "https://api.github.com/repos/${MS_REPO}/releases/latest" \
+            | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')" || true
+        if [ -z "${MODSHARP_VERSION}" ]; then
+            echo "== ERROR: could not resolve the latest ModSharp release (GitHub API unreachable?)."
+            echo "== Set the 'ModSharp Version' variable to a release tag (e.g. git-178) and reinstall."
+            exit 1
+        fi
+        echo "== Latest ModSharp release: ${MODSHARP_VERSION}"
+    fi
+    ms_label="${MODSHARP_VERSION}"
+    ms_marker="${MODSHARP_VERSION}"
+
+    echo "== Installing ModSharp ${MODSHARP_VERSION}..."
+    asset="ModSharp-${MODSHARP_VERSION//-/}-linux"
+    base_url="https://github.com/${MS_REPO}/releases/download/${MODSHARP_VERSION}"
+    work="$(mktemp -d)"
+
+    curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${base_url}/${asset}.zip"
+    curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${base_url}/${asset}-extensions.zip"
+
+    # Main zip contains the sharp/ folder → extract straight into game/.
+    mkdir -p /mnt/server/game
+    unzip -qo "${work}/main.zip" -d /mnt/server/game
+
+    # Extensions follow the shared-library layout: one folder per extension.
+    mkdir -p "${SHARP_DIR}/shared"
+    unzip -qo "${work}/ext.zip" -d "${work}/ext"
+    rsync -a "${work}/ext/" "${SHARP_DIR}/shared/"
+    rm -rf "${work}"
 fi
-
-echo "== Installing ModSharp ${MODSHARP_VERSION}..."
-asset="ModSharp-${MODSHARP_VERSION//-/}-linux"
-base_url="https://github.com/${MS_REPO}/releases/download/${MODSHARP_VERSION}"
-work="$(mktemp -d)"
-
-curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${base_url}/${asset}.zip"
-curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${base_url}/${asset}-extensions.zip"
-
-# Main zip contains the sharp/ folder → extract straight into game/.
-mkdir -p /mnt/server/game
-unzip -qo "${work}/main.zip" -d /mnt/server/game
-
-# Extensions follow the shared-library layout: one folder per extension.
-mkdir -p "${SHARP_DIR}/shared"
-unzip -qo "${work}/ext.zip" -d "${work}/ext"
-rsync -a "${work}/ext/" "${SHARP_DIR}/shared/"
-rm -rf "${work}"
 
 # ---------------------------------------------------------------------------
 # 3. Portable .NET runtime (RT3 cannot use a system-wide .NET)
@@ -144,10 +183,10 @@ fi
 # ---------------------------------------------------------------------------
 # 5. Version markers for the entrypoint
 # ---------------------------------------------------------------------------
-echo "${MODSHARP_VERSION}" > /mnt/server/.ms-version
+echo "${ms_marker}" > /mnt/server/.ms-version
 if [ "${dotnet_ok}" = "1" ]; then
     echo "${DOTNET_CHANNEL}" > /mnt/server/.dotnet-channel
-    echo "== Install complete: CS2 + ModSharp ${MODSHARP_VERSION} + .NET ${DOTNET_CHANNEL}."
+    echo "== Install complete: CS2 + ModSharp ${ms_label} + .NET ${DOTNET_CHANNEL}."
 else
-    echo "== Install complete: CS2 + ModSharp ${MODSHARP_VERSION} — .NET pending (installed at first start)."
+    echo "== Install complete: CS2 + ModSharp ${ms_label} — .NET pending (installed at first start)."
 fi
