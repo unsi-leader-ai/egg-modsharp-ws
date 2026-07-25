@@ -182,8 +182,8 @@
             "field_type": "text"
         },
         {
-            "name": "Steam Login User",
-            "description": "SteamCMD login for updates. Leave empty to use 'anonymous'.",
+            "name": "Steam Login User (optional)",
+            "description": "NOT needed for CS2 — the server content (AppID 730) downloads anonymously. Leave EMPTY to deselect the login (SteamCMD then uses 'anonymous', recommended). Only fill in if you explicitly want SteamCMD to log in with an account.",
             "env_variable": "SRCDS_LOGIN",
             "default_value": "",
             "user_viewable": true,
@@ -192,8 +192,8 @@
             "field_type": "text"
         },
         {
-            "name": "Steam Login Password",
-            "description": "Password for the SteamCMD login user. Leave empty when using anonymous.",
+            "name": "Steam Login Password (optional)",
+            "description": "Only used while 'Steam Login User' is set. Leave empty when using anonymous.",
             "env_variable": "SRCDS_LOGIN_PASS",
             "default_value": "",
             "user_viewable": true,
