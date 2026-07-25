@@ -15,7 +15,7 @@ apt-get update -qq
 apt-get install -y -qq curl unzip rsync ca-certificates lib32gcc-s1 >/dev/null
 
 MS_REPO="Kxnrl/modsharp-public"
-MODSHARP_VERSION="${MODSHARP_VERSION:-git-132}"
+MODSHARP_VERSION="${MODSHARP_VERSION:-}"
 DOTNET_CHANNEL="${DOTNET_CHANNEL:-10.0}"
 SRCDS_APPID="${SRCDS_APPID:-730}"
 SHARP_DIR="/mnt/server/game/sharp"
@@ -55,6 +55,22 @@ cp -f linux64/steamclient.so /mnt/server/.steam/sdk64/steamclient.so
 # ---------------------------------------------------------------------------
 # 2. ModSharp + extensions
 # ---------------------------------------------------------------------------
+# No pinned version set → resolve the latest release tag. A fresh install
+# needs SOME ModSharp; the entrypoint later leaves the binaries untouched
+# as long as MODSHARP_VERSION stays empty.
+if [ -z "${MODSHARP_VERSION}" ]; then
+    echo "== MODSHARP_VERSION empty — resolving latest ModSharp release..."
+    MODSHARP_VERSION="$(curl -fsSL --connect-timeout 10 --max-time 30 \
+        "https://api.github.com/repos/${MS_REPO}/releases/latest" \
+        | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')" || true
+    if [ -z "${MODSHARP_VERSION}" ]; then
+        echo "== ERROR: could not resolve the latest ModSharp release (GitHub API unreachable?)."
+        echo "== Set the 'ModSharp Version' variable to a release tag (e.g. git-178) and reinstall."
+        exit 1
+    fi
+    echo "== Latest ModSharp release: ${MODSHARP_VERSION}"
+fi
+
 echo "== Installing ModSharp ${MODSHARP_VERSION}..."
 asset="ModSharp-${MODSHARP_VERSION//-/}-linux"
 base_url="https://github.com/${MS_REPO}/releases/download/${MODSHARP_VERSION}"

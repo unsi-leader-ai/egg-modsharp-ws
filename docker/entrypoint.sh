@@ -96,16 +96,22 @@ fi
 # ---------------------------------------------------------------------------
 # 3. ModSharp binaries + extensions (pinned via MODSHARP_VERSION)
 # ---------------------------------------------------------------------------
-MODSHARP_VERSION="${MODSHARP_VERSION:-git-132}"
+MODSHARP_VERSION="${MODSHARP_VERSION:-}"
 installed_ms="$(cat "${MS_MARKER}" 2>/dev/null || echo none)"
 
-if [ "${installed_ms}" = "none" ] && [ -d "${SHARP_DIR}/bin" ]; then
+if [ -z "${MODSHARP_VERSION}" ]; then
+    # Empty version = never touch the installed binaries (custom builds stay
+    # safe). Fresh installs get the latest release via the install script.
+    msg "MODSHARP_VERSION empty — ModSharp binaries left untouched (installed: ${installed_ms})."
+elif [ "${installed_ms}" = "none" ] && [ -d "${SHARP_DIR}/bin" ]; then
     msg "WARNING: existing ModSharp install found without a version marker (egg switch without reinstall?)."
     msg "WARNING: framework files (bin/core/shared/locales/gamedata) will be overwritten with ${MODSHARP_VERSION}."
     msg "WARNING: if a newer/custom build is installed, write its tag into .ms-version instead to keep it."
 fi
 
-if [ "${MODSHARP_VERSION}" = "${installed_ms}" ]; then
+if [ -z "${MODSHARP_VERSION}" ]; then
+    : # handled above
+elif [ "${MODSHARP_VERSION}" = "${installed_ms}" ]; then
     msg "ModSharp ${installed_ms} already installed."
 else
     msg "Installing ModSharp ${MODSHARP_VERSION} (installed: ${installed_ms})..."
