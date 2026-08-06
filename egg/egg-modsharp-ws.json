@@ -182,16 +182,6 @@
             "field_type": "text"
         },
         {
-            "name": "Mount Workshop Addon Server-Side",
-            "description": "Boot on the workshop addon's own map so the SERVER mounts it, then let a module change to the real start map (wase_WorkshopManager does this once per process). '-dual_addon' alone mounts the addon for CLIENTS only, which leaves the server not knowing its sound events. Needs DUAL_ADDON and STEAM_AUTHKEY; with either missing the flag is skipped and '+map' is kept. Set to 1 to enable.",
-            "env_variable": "WORKSHOP_MOUNT",
-            "default_value": "0",
-            "user_viewable": true,
-            "user_editable": true,
-            "rules": "required|in:0,1",
-            "field_type": "text"
-        },
-        {
             "name": "Steam Login User (optional)",
             "description": "NOT needed for CS2 — the server content (AppID 730) downloads anonymously. Leave EMPTY to deselect the login (SteamCMD then uses 'anonymous', recommended). Only fill in if you explicitly want SteamCMD to log in with an account.",
             "env_variable": "SRCDS_LOGIN",
