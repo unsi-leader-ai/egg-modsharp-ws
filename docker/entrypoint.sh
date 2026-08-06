@@ -338,6 +338,54 @@ while [ "${i}" -lt "${#tokens[@]}" ]; do
 done
 MODIFIED_STARTUP="${cleaned[*]}"
 
+# Mount the workshop addon SERVER-side by booting into its own map.
+#
+# "-dual_addon <id>" only mounts the addon for CLIENTS. The server itself never
+# learns the addon's content — most visibly its sound events, which stay unknown
+# to every module that wants to play them. The documented way in is to start on
+# the addon's own map, and the mount then survives a changelevel to any ordinary
+# map for the life of the process.
+#
+# So "+map <SRCDS_MAP>" is replaced by "+host_workshop_map <id>". The server
+# boots on the addon's map, and a module puts the intended start map back
+# (wase_WorkshopManager does this once per process). Requires a Steam Web API
+# key: the workshop query is refused without one.
+# ":-" on purpose: a server created from an older egg revision has no such
+# variable, and an unset one must simply mean "off".
+if [ "${WORKSHOP_MOUNT:-0}" = "1" ]; then
+    if [ -z "${DUAL_ADDON}" ]; then
+        msg "WORKSHOP_MOUNT=1 but DUAL_ADDON is empty — nothing to mount, keeping '+map'."
+    elif [ -z "${STEAM_AUTHKEY}" ]; then
+        # Booting into a workshop map without a key does not fail loudly — the
+        # server never reaches Virtual_GameInit and restarts about a minute
+        # later, over and over. Refusing here is the kinder failure.
+        msg "WORKSHOP_MOUNT=1 but STEAM_AUTHKEY is empty — '+host_workshop_map' would crash-loop the server. Keeping '+map'."
+    else
+        read -ra tokens <<< "${MODIFIED_STARTUP}"
+        remapped=()
+        i=0
+        replaced=0
+        while [ "${i}" -lt "${#tokens[@]}" ]; do
+            if [ "${tokens[${i}]}" = "+map" ]; then
+                remapped+=("+host_workshop_map" "${DUAL_ADDON}")
+                i=$((i + 2))   # drop the map name that followed "+map"
+                replaced=1
+                continue
+            fi
+            remapped+=("${tokens[${i}]}")
+            i=$((i + 1))
+        done
+
+        if [ "${replaced}" = "1" ]; then
+            MODIFIED_STARTUP="${remapped[*]}"
+            msg "WORKSHOP_MOUNT=1 — booting on workshop map ${DUAL_ADDON} instead of '${SRCDS_MAP}'; a module is expected to change to the real start map."
+        else
+            MODIFIED_STARTUP="${MODIFIED_STARTUP} +host_workshop_map ${DUAL_ADDON}"
+            msg "WORKSHOP_MOUNT=1 — no '+map' in the startup line, appended '+host_workshop_map ${DUAL_ADDON}'."
+        fi
+    fi
+fi
+
 # The authkey is a Steam Web API key — kept out of the visible startup line
 # on purpose; appended shell-escaped instead.
 if [ -n "${STEAM_AUTHKEY}" ]; then
