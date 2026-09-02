@@ -101,6 +101,7 @@ fi
 MODSHARP_VERSION="${MODSHARP_VERSION:-}"
 MODSHARP_CUSTOM_URL="${MODSHARP_CUSTOM_URL:-}"
 MODSHARP_CUSTOM_EXT_URL="${MODSHARP_CUSTOM_EXT_URL:-}"
+MODSHARP_SKIP_DEFAULTS="${MODSHARP_SKIP_DEFAULTS:-0}"
 installed_ms="$(cat "${MS_MARKER}" 2>/dev/null || echo none)"
 
 if [ -n "${MODSHARP_CUSTOM_URL}" ] && ! [[ "${MODSHARP_CUSTOM_URL}" =~ ^https?:// ]]; then
@@ -173,7 +174,18 @@ else
         # Framework directories: bin/ and core/ are fully framework-owned →
         # mirror them (--delete) so renamed/removed files don't go stale.
         # shared/, locales/ and gamedata/ may contain user additions → merge only.
-        for d in bin core shared locales gamedata; do
+        # MODSHARP_SKIP_DEFAULTS=1 = bare deploy: the zips contribute NOTHING
+        # to modules/ and shared/ — no Sharp.Modules.* default modules, no
+        # *.Shared defaults, no extensions. configs/ still seeds below
+        # (ModSharp does not boot without configs/core.json).
+        framework_dirs=(bin core shared locales gamedata)
+        seed_dirs=(configs modules)
+        if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ]; then
+            framework_dirs=(bin core locales gamedata)
+            seed_dirs=(configs)
+            msg "MODSHARP_SKIP_DEFAULTS=1 — deploying ModSharp without default modules, shared defaults and extensions."
+        fi
+        for d in "${framework_dirs[@]}"; do
             if [ -d "${work}/main/sharp/${d}" ]; then
                 mkdir -p "${SHARP_DIR}/${d}"
                 del=()
@@ -184,20 +196,32 @@ else
 
         # configs/ and modules/: NEVER overwritten on update — only seeded when
         # they don't exist yet (fresh volume without install script).
-        for d in configs modules; do
+        for d in "${seed_dirs[@]}"; do
             if [ ! -d "${SHARP_DIR}/${d}" ] && [ -d "${work}/main/sharp/${d}" ]; then
                 rsync -a "${work}/main/sharp/${d}/" "${SHARP_DIR}/${d}/" || deploy_ok=0
             fi
         done
+        # Empty targets for the operator's own deploy — SFTP needs them to exist.
+        mkdir -p "${SHARP_DIR}/modules" "${SHARP_DIR}/shared"
 
         # Extensions (CommandManager, EntityHookManager, GameEventManager)
         # follow the shared-library layout: one folder per extension in shared/.
         # Mirror each framework extension folder, never the whole shared/ tree.
-        for extdir in "${work}/ext"/*/; do
-            [ -d "${extdir}" ] || continue
-            name="$(basename "${extdir}")"
-            rsync -a --delete "${extdir}" "${SHARP_DIR}/shared/${name}/" || deploy_ok=0
-        done
+        if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ]; then
+            # Bare mode never deletes: default content already on disk stays,
+            # but it will no longer be updated — say so instead of going stale
+            # silently.
+            stale="$(cd "${SHARP_DIR}" && ls -d modules/Sharp.Modules.* shared/Sharp.Modules.* shared/Sharp.Extensions.* 2>/dev/null | tr '\n' ' ' || true)"
+            if [ -n "${stale}" ]; then
+                msg "WARNING: existing default content is left untouched and NOT updated to ${ms_target}: ${stale}— remove it (or set MODSHARP_SKIP_DEFAULTS=0) so no stale framework parts stay behind."
+            fi
+        else
+            for extdir in "${work}/ext"/*/; do
+                [ -d "${extdir}" ] || continue
+                name="$(basename "${extdir}")"
+                rsync -a --delete "${extdir}" "${SHARP_DIR}/shared/${name}/" || deploy_ok=0
+            done
+        fi
 
         if [ "${deploy_ok}" = "1" ]; then
             echo "${ms_target}" > "${MS_MARKER}"
@@ -285,6 +309,14 @@ else
             msg "WARNING: .NET ${DOTNET_CHANNEL} install failed and no runtime is present — ModSharp will not load; starting CS2 anyway (install is retried on next start)."
         fi
     fi
+fi
+
+# A bare deploy leaves modules/ empty until the operator uploads their own
+# stack — and a ModSharp start with a completely empty module tree has failed
+# to init before (2026-09-02). Say why the server may die instead of dying
+# silently.
+if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ] && [ -z "$(ls -A "${SHARP_DIR}/modules" 2>/dev/null)" ]; then
+    msg "WARNING: MODSHARP_SKIP_DEFAULTS=1 and sharp/modules is empty — deploy your modules; a ModSharp boot without any module has failed to init before."
 fi
 
 # ---------------------------------------------------------------------------

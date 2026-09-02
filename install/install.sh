@@ -16,10 +16,32 @@ apt-get install -y -qq curl unzip rsync ca-certificates lib32gcc-s1 >/dev/null
 
 MS_REPO="Kxnrl/modsharp-public"
 MODSHARP_VERSION="${MODSHARP_VERSION:-}"
+MODSHARP_SKIP_DEFAULTS="${MODSHARP_SKIP_DEFAULTS:-0}"
 DOTNET_CHANNEL="${DOTNET_CHANNEL:-10.0}"
 SRCDS_APPID="${SRCDS_APPID:-730}"
 SHARP_DIR="/mnt/server/game/sharp"
 CR=$(printf '\r')
+
+# Extract a ModSharp main zip into game/. With MODSHARP_SKIP_DEFAULTS=1 the
+# zip contributes nothing to sharp/modules and sharp/shared (no Sharp.Modules.*
+# default modules, no *.Shared defaults) — both are created empty as targets
+# for the operator's own deploy. configs/ (incl. the boot-required core.json),
+# bin/, core/, locales/ and gamedata/ install either way.
+extract_main_zip() {
+    mkdir -p /mnt/server/game
+    if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ]; then
+        local staged
+        staged="$(mktemp -d)"
+        unzip -qo "$1" -d "${staged}"
+        rsync -a --exclude='/sharp/modules' --exclude='/sharp/shared' "${staged}/" /mnt/server/game/
+        if [ -d "${staged}/sharp" ]; then
+            mkdir -p "${SHARP_DIR}/modules" "${SHARP_DIR}/shared"
+        fi
+        rm -rf "${staged}"
+    else
+        unzip -qo "$1" -d /mnt/server/game
+    fi
+}
 
 # Empty SRCDS_LOGIN = anonymous. The anonymous login gets no password
 # argument at all — steamcmd misparses a bare empty string.
@@ -75,15 +97,16 @@ if [ -n "${MODSHARP_CUSTOM_URL:-}" ]; then
     curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${MODSHARP_CUSTOM_URL}"
 
     # Custom main zip must use the official layout (contains sharp/).
-    mkdir -p /mnt/server/game
-    unzip -qo "${work}/main.zip" -d /mnt/server/game
+    extract_main_zip "${work}/main.zip"
     if [ ! -d "${SHARP_DIR}" ]; then
         echo "== ERROR: custom build zip does not contain a sharp/ folder — wrong archive?"
         exit 1
     fi
 
     # Optional matching extensions zip (one folder per extension).
-    if [ -n "${MODSHARP_CUSTOM_EXT_URL:-}" ]; then
+    if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ]; then
+        echo "== MODSHARP_SKIP_DEFAULTS=1 — default modules, shared defaults and extensions skipped."
+    elif [ -n "${MODSHARP_CUSTOM_EXT_URL:-}" ]; then
         curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${MODSHARP_CUSTOM_EXT_URL}"
         mkdir -p "${SHARP_DIR}/shared"
         unzip -qo "${work}/ext.zip" -d "${work}/ext"
@@ -115,16 +138,19 @@ else
     work="$(mktemp -d)"
 
     curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/main.zip" "${base_url}/${asset}.zip"
-    curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${base_url}/${asset}-extensions.zip"
 
-    # Main zip contains the sharp/ folder → extract straight into game/.
-    mkdir -p /mnt/server/game
-    unzip -qo "${work}/main.zip" -d /mnt/server/game
+    # Main zip contains the sharp/ folder → extract into game/.
+    extract_main_zip "${work}/main.zip"
 
     # Extensions follow the shared-library layout: one folder per extension.
-    mkdir -p "${SHARP_DIR}/shared"
-    unzip -qo "${work}/ext.zip" -d "${work}/ext"
-    rsync -a "${work}/ext/" "${SHARP_DIR}/shared/"
+    if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ]; then
+        echo "== MODSHARP_SKIP_DEFAULTS=1 — default modules, shared defaults and extensions skipped."
+    else
+        curl -fsSL --connect-timeout 10 --max-time 300 -o "${work}/ext.zip" "${base_url}/${asset}-extensions.zip"
+        mkdir -p "${SHARP_DIR}/shared"
+        unzip -qo "${work}/ext.zip" -d "${work}/ext"
+        rsync -a "${work}/ext/" "${SHARP_DIR}/shared/"
+    fi
     rm -rf "${work}"
 fi
 

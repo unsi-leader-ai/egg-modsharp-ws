@@ -62,6 +62,7 @@ still starts.
 | `GAME_TYPE` / `GAME_MODE` | `0` / `0` | `+game_type` / `+game_mode` (0/0 casual, 0/1 competitive, 0/2 wingman, 1/0 arms race, 1/2 deathmatch, 3/0 custom) |
 | `MODSHARP_VERSION` | `git-132` | pinned release tag; change + restart to update |
 | `MODSHARP_GAMEDATA_UPDATE` | `1` | gamedata refresh from master on every start |
+| `MODSHARP_SKIP_DEFAULTS` | `0` | `1` = install/update ModSharp without its default modules and shared defaults (incl. extensions); `modules/` and `shared/` are created empty for your own deploy, configs (incl. the boot-required `core.json`) still seed |
 | `DOTNET_CHANNEL` | `10.0` | .NET runtime channel (set `11.0` to switch later) |
 | `DUAL_ADDON` | – | one workshop ID (digits only); empty = flag omitted |
 | `STEAM_AUTHKEY` | – | `-authkey` for workshop content (32-hex Steam Web API key) |
