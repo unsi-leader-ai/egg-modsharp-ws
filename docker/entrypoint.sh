@@ -336,7 +336,40 @@ while [ "${i}" -lt "${#tokens[@]}" ]; do
     cleaned+=("${tok}")
     i=$((i + 1))
 done
+# The panel stores the startup line PER SERVER and egg updates never refresh
+# it — a server carried over from an older egg (or another egg entirely) can
+# lack placeholders, silently dropping panel variables (bitten live
+# 2026-09-02: DUAL_ADDON was set, the stale line had no {{DUAL_ADDON}}, so
+# clients never mounted the addon and every workshop model rendered as ERROR).
+# The variables are the authority ("empty = deselected"): append a flag whose
+# variable is set but whose placeholder AND flag are both absent. Lines that
+# carry the flag hand-written keep whatever they say.
+ensure_flag() {
+    local flag="$1" placeholder="$2" value="$3" tok
+    [ -z "${value}" ] && return 0
+    case "${STARTUP}" in *"${placeholder}"*) return 0 ;; esac
+    for tok in "${cleaned[@]}"; do
+        [ "${tok}" = "${flag}" ] && return 0
+    done
+    msg "startup: stale per-server line has no ${placeholder} — appending '${flag} ${value}' from the panel variable (update the server's startup line to the egg's current one to silence this)."
+    cleaned+=("${flag}" "${value}")
+}
+ensure_flag "-dual_addon" '{{DUAL_ADDON}}' "${DUAL_ADDON}"
+ensure_flag "+game_type"  '{{GAME_TYPE}}'  "${GAME_TYPE}"
+ensure_flag "+game_mode"  '{{GAME_MODE}}'  "${GAME_MODE}"
 MODIFIED_STARTUP="${cleaned[*]}"
+
+# EXTRA_ARGS has no fixed flag token, so reconcile it via the raw template
+# only; its value was already validated against the character allowlist above.
+if [ -n "${EXTRA_ARGS}" ]; then
+    case "${STARTUP}" in
+        *'{{EXTRA_ARGS}}'*) ;;
+        *)
+            msg "startup: stale per-server line has no {{EXTRA_ARGS}} — appending '${EXTRA_ARGS}'."
+            MODIFIED_STARTUP="${MODIFIED_STARTUP} ${EXTRA_ARGS}"
+            ;;
+    esac
+fi
 
 # The authkey is a Steam Web API key — kept out of the visible startup line
 # on purpose; appended shell-escaped instead.
