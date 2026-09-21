@@ -10,10 +10,19 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# iproute2: INTERNAL_IP in the entrypoint; the rest is used by the
-# ModSharp/.NET/gamedata update logic in entrypoint.sh.
+# iproute2: INTERNAL_IP in the entrypoint; unzip and rsync are used by the
+# ModSharp/.NET/gamedata update logic in entrypoint.sh. curl and
+# ca-certificates ship with the sniper image and are deliberately NOT listed:
+# naming them makes apt upgrade them from bullseye-security.
+#
+# sniper is Debian 11 (bullseye), and its security pocket lists versions whose
+# .deb answers 404 (2026-09-21 — this build failed on unzip, rsync, libbpf0,
+# ca-certificates). So: try the newest versions, fall back to the base
+# release (-t bullseye), and fail the build if a tool is still missing.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends iproute2 curl ca-certificates unzip rsync \
+ && { apt-get install -y --no-install-recommends iproute2 unzip rsync \
+      || apt-get install -y --no-install-recommends -t bullseye iproute2 unzip rsync; } \
+ && command -v ip && command -v unzip && command -v rsync && command -v curl \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
