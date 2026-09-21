@@ -5,6 +5,8 @@
 #   1. CS2 update via SteamCMD          (skipped when SRCDS_STOP_UPDATE=1)
 #   2. gameinfo.gi re-patch             (idempotent; CS2 updates overwrite it)
 #   3. ModSharp binaries + extensions   (MODSHARP_CUSTOM_URL > MODSHARP_VERSION;
+#                                        MODSHARP_VERSION=latest = follow the
+#                                        newest release on every start;
 #                                        both empty = binaries never touched;
 #                                        install only when target != marker;
 #                                        sharp/configs + sharp/modules are never
@@ -135,6 +137,25 @@ if [ -n "${MODSHARP_CUSTOM_EXT_URL}" ] && ! [[ "${MODSHARP_CUSTOM_EXT_URL}" =~ ^
     MODSHARP_CUSTOM_EXT_URL=""
 fi
 
+# Newest release tag of the ModSharp repo. The releases/latest redirect is
+# asked first (no API rate limit — many servers behind one node IP share the
+# 60 requests/hour of the unauthenticated API), the API is the fallback. The
+# tag is format-checked because it ends up in a download URL and the marker.
+resolve_latest_ms() {
+    local tag url
+    url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' --connect-timeout 10 --max-time 20 \
+        "https://github.com/${MS_REPO}/releases/latest" 2>/dev/null || true)"
+    case "${url}" in */releases/tag/*) tag="${url##*/releases/tag/}" ;; *) tag="" ;; esac
+    if [ -z "${tag}" ]; then
+        tag="$(curl -fsSL --connect-timeout 10 --max-time 20 \
+            "https://api.github.com/repos/${MS_REPO}/releases/latest" 2>/dev/null \
+            | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' || true)"
+    fi
+    [[ "${tag}" =~ ^[A-Za-z0-9._-]{1,32}$ ]] || return 1
+    echo "${tag}"
+}
+ms_keep_reason=""
+
 # Which ModSharp should be on disk? A custom-build URL wins over a release
 # tag; both empty = never touch the installed binaries (e.g. SFTP-deployed
 # custom builds stay safe). The marker stores this exact string, so changing
@@ -143,11 +164,25 @@ ms_target=""
 if [ -n "${MODSHARP_CUSTOM_URL}" ]; then
     ms_target="custom:${MODSHARP_CUSTOM_URL}|${MODSHARP_CUSTOM_EXT_URL}"
     [ -n "${MODSHARP_VERSION}" ] && msg "MODSHARP_CUSTOM_URL set — takes precedence over MODSHARP_VERSION '${MODSHARP_VERSION}'."
+elif [ "${MODSHARP_VERSION,,}" = "latest" ]; then
+    # Opt-in auto-update: follow the newest release on every start. The marker
+    # stores the RESOLVED tag, so a start only reinstalls when a new release is
+    # out, and pinning that same tag later costs no reinstall. If the lookup
+    # fails the installed version stays and the server starts anyway.
+    ms_target="$(resolve_latest_ms || true)"
+    if [ -n "${ms_target}" ]; then
+        msg "MODSHARP_VERSION=latest — newest ModSharp release is ${ms_target}."
+    else
+        msg "WARNING: MODSHARP_VERSION=latest, but the newest release could not be resolved (GitHub unreachable?) — keeping the installed ModSharp (${installed_ms})."
+        ms_keep_reason="lookup failed"
+    fi
 elif [ -n "${MODSHARP_VERSION}" ]; then
     ms_target="${MODSHARP_VERSION}"
 fi
 
-if [ -z "${ms_target}" ]; then
+if [ -n "${ms_keep_reason}" ]; then
+    : # already reported above
+elif [ -z "${ms_target}" ]; then
     msg "MODSHARP_VERSION and MODSHARP_CUSTOM_URL empty — ModSharp binaries left untouched (installed: ${installed_ms})."
 elif [ "${installed_ms}" = "none" ] && [ -d "${SHARP_DIR}/bin" ]; then
     msg "WARNING: existing ModSharp install found without a version marker (egg switch without reinstall?)."

@@ -64,7 +64,7 @@ Set by the egg; the entrypoint reads them from the environment.
 | `SRCDS_VALIDATE` | `0` | SteamCMD `validate` (may reset modified files) |
 | `SRCDS_APPID` | `730` | not editable |
 | `GAME_TYPE` / `GAME_MODE` | `0` / `0` | `+game_type` / `+game_mode` (0/0 casual, 0/1 competitive, 0/2 wingman, 1/0 arms race, 1/2 deathmatch, 3/0 custom) |
-| `MODSHARP_VERSION` | `git-132` | pinned release tag; change + restart to update |
+| `MODSHARP_VERSION` | – | a release tag (e.g. `git-168`) = exactly that version, older ones included; `latest` = opt-in auto-update, every start installs the newest release when it changed (lookup fails = installed version stays); empty = binaries are never touched |
 | `MODSHARP_GAMEDATA_UPDATE` | `1` | gamedata refresh from master on every start |
 | `MODSHARP_SKIP_DEFAULTS` | `0` | `1` = install/update ModSharp without its default modules and shared defaults (incl. extensions); `modules/` and `shared/` are created empty for your own deploy, configs (incl. the boot-required `core.json`) still seed ModSharp cannot init without at least one loadable module, so as long as `sharp/modules` holds none the entrypoint starts plain CS2 (removes `Game sharp` from `gameinfo.gi` for that run, says so in the console) and switches ModSharp back on at the first start that finds a module. |
 | `DOTNET_CHANNEL` | `10.0` | .NET runtime channel (set `11.0` to switch later) |
@@ -75,8 +75,12 @@ Set by the egg; the entrypoint reads them from the environment.
 
 ## Updating ModSharp
 
-The binaries are pinned deliberately: set `MODSHARP_VERSION` to a new release
-tag (e.g. `git-140`) in the Startup tab and restart. The entrypoint downloads
+Pinned by default: set `MODSHARP_VERSION` to a release tag (e.g. `git-140`) in
+the Startup tab and restart — the same way back to an older release. Set it to
+`latest` to allow automatic updates instead: every start asks GitHub for the
+newest release and installs it when it differs from the installed one. The
+marker stores the resolved tag, so nothing is reinstalled while no new release
+is out, and a failed lookup keeps what is installed. The entrypoint downloads
 `ModSharp-<tag>-linux.zip` and `...-extensions.zip`, mirrors `bin/` and `core/`
 (stale framework files are removed), merges `shared/ locales/ gamedata/`
 (custom shared libraries survive) and leaves `configs/` and `modules/`
