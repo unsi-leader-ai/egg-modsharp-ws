@@ -11,6 +11,8 @@
 #                                        overwritten, only seeded when missing)
 #   4. gamedata refresh from master     (when MODSHARP_GAMEDATA_UPDATE=1)
 #   5. .NET runtime                     (only when DOTNET_CHANNEL != marker)
+#   5b. no loadable module in sharp/modules = start plain CS2 for this run
+#                                       (ModSharp cannot init without one)
 #   6. build the final startup line and run the server
 #
 # Steps 3-5 are transactional: downloads are staged and only swapped in on
@@ -37,6 +39,26 @@ msg() { echo "[modsharp-ws] $*"; }
 # 1. CS2 update via SteamCMD
 # ---------------------------------------------------------------------------
 if [ "${SRCDS_STOP_UPDATE:-0}" != "1" ]; then
+    # No steamcmd in the volume = the egg's install script never ran (server
+    # created or switched with "Skip Egg Install Script"). Fetch it here, so
+    # the update below installs CS2 instead of the start dying on a missing
+    # ./game/cs2.sh. Staged: a failed download leaves no half steamcmd/ behind.
+    if [ ! -f ./steamcmd/steamcmd.sh ]; then
+        msg "steamcmd not found (install script skipped?) — downloading SteamCMD..."
+        sc_tmp="$(mktemp -d -p /home/container .steamcmd-dl.XXXXXX)"
+        if curl -fsSL --connect-timeout 10 --max-time 300 -o "${sc_tmp}/steamcmd.tar.gz" \
+                https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+            && mkdir -p "${sc_tmp}/steamcmd" \
+            && tar -xzf "${sc_tmp}/steamcmd.tar.gz" -C "${sc_tmp}/steamcmd" \
+            && [ -f "${sc_tmp}/steamcmd/steamcmd.sh" ] \
+            && { [ ! -e ./steamcmd ] || rmdir ./steamcmd 2>/dev/null; } \
+            && mv "${sc_tmp}/steamcmd" ./steamcmd; then
+            msg "SteamCMD installed. A first CS2 install takes a while (about 60 GB)."
+        else
+            msg "WARNING: SteamCMD download failed."
+        fi
+        rm -rf "${sc_tmp}"
+    fi
     if [ -f ./steamcmd/steamcmd.sh ]; then
         login=(anonymous)
         if [ -n "${SRCDS_LOGIN}" ]; then
@@ -311,12 +333,40 @@ else
     fi
 fi
 
-# A bare deploy leaves modules/ empty until the operator uploads their own
-# stack — and a ModSharp start with a completely empty module tree has failed
-# to init before (2026-09-02). Say why the server may die instead of dying
-# silently.
-if [ "${MODSHARP_SKIP_DEFAULTS}" = "1" ] && [ -z "$(ls -A "${SHARP_DIR}/modules" 2>/dev/null)" ]; then
-    msg "WARNING: MODSHARP_SKIP_DEFAULTS=1 and sharp/modules is empty — deploy your modules; a ModSharp boot without any module has failed to init before."
+# ModSharp refuses to init when not a single module ends up running
+# (SharpModuleManager.LoadModules returns false -> "Failed to init ModSharp!")
+# and the engine then parks instead of serving — the server never comes up.
+# That is the normal state right after a bare deploy (MODSHARP_SKIP_DEFAULTS=1)
+# and after an operator emptied modules/. Start plain CS2 for this run instead:
+# take 'Game sharp' out of gameinfo.gi, so the server reaches Running and the
+# operator can deploy. Step 2 patches it back in on the first start that finds
+# a module. "Loadable" mirrors the framework's own test: a folder that is not
+# disabled and holds a <name>.deps.json next to its <name>.dll.
+has_loadable_module() {
+    local dir deps
+    for dir in "${SHARP_DIR}/modules"/*/; do
+        [ -d "${dir}" ] || continue
+        dir="${dir%/}"
+        [[ "${dir}" == *.disabled ]] && continue
+        [ -e "${dir}/.disabled" ] && continue
+        for deps in "${dir}"/*.deps.json; do
+            [ -f "${deps}" ] && [ -f "${deps%.deps.json}.dll" ] && return 0
+        done
+    done
+    return 1
+}
+if [ -d "${SHARP_DIR}/bin" ] && ! has_loadable_module; then
+    msg "WARNING: sharp/modules holds no loadable module — ModSharp cannot init without one and the server would never come up."
+    if [ -f "${GAMEINFO_FILE}" ] && grep -qE "${GAMEINFO_MATCH}" "${GAMEINFO_FILE}"; then
+        if grep -vE "${GAMEINFO_MATCH}" "${GAMEINFO_FILE}" > "${GAMEINFO_FILE}.tmp" && mv "${GAMEINFO_FILE}.tmp" "${GAMEINFO_FILE}"; then
+            msg "WARNING: starting CS2 WITHOUT ModSharp for this run ('Game sharp' removed from gameinfo.gi). Deploy your modules to sharp/modules and restart — ModSharp is switched back on automatically."
+        else
+            rm -f "${GAMEINFO_FILE}.tmp"
+            msg "WARNING: could not rewrite gameinfo.gi — starting with ModSharp anyway; expect 'Failed to init ModSharp!'."
+        fi
+    else
+        msg "WARNING: starting CS2 WITHOUT ModSharp for this run. Deploy your modules to sharp/modules and restart."
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -407,6 +457,14 @@ fi
 # on purpose; appended shell-escaped instead.
 if [ -n "${STEAM_AUTHKEY}" ]; then
     MODIFIED_STARTUP="${MODIFIED_STARTUP} -authkey $(printf '%q' "${STEAM_AUTHKEY}")"
+fi
+
+# Without the game there is nothing to start — say what is wrong instead of
+# ending on the shell's bare "No such file or directory".
+if [ ! -f ./game/cs2.sh ]; then
+    msg "ERROR: ./game/cs2.sh is missing — CS2 is not installed in this volume."
+    msg "ERROR: check the SteamCMD output above (disk space? 'Error! App ... state is 0x...'), SRCDS_STOP_UPDATE must be 0 for the first start; or run 'Reinstall Server' with 'Skip Egg Install Script' OFF."
+    exit 1
 fi
 
 echo ":/home/container$ ${MODIFIED_STARTUP}"
