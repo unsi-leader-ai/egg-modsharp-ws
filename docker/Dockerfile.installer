@@ -1,0 +1,27 @@
+# Modsharp WS — install container for the egg's install script.
+# The script runs once per (re)install, as root, with the server volume at
+# /mnt/server; nothing of the game runs in here, so this is plain official
+# Debian — the Steam RT3 requirement concerns the runtime image only.
+#
+# Everything the script needs is baked in at build time: no apt-get while a
+# server installs, so a broken package mirror can no longer kill an install
+# (2026-09-21: unzip 404 from bullseye-security in the stock installer image).
+# If a mirror is broken when CI builds this, the build fails and the previous
+# image simply stays published.
+FROM debian:trixie-slim
+
+LABEL author="wase7@wase7.com" maintainer="wase7@wase7.com"
+LABEL org.opencontainers.image.source="https://github.com/unsi-leader-ai/egg-modsharp-ws"
+LABEL org.opencontainers.image.description="Install container for CS2 + ModSharp Pterodactyl servers (Debian + curl/unzip/rsync, SteamCMD 32-bit runtime)"
+LABEL org.opencontainers.image.licenses="MIT"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# lib32gcc-s1: SteamCMD is a 32-bit binary. The rest is what install.sh calls.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates unzip rsync tar gzip lib32gcc-s1 \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# No USER line on purpose: Wings starts the install container without setting
+# a user, and the script needs root (chown of the volume).

@@ -24,7 +24,8 @@ the revisions up to September 2026 remain in this repository's history.
 |---|---|
 | `docker/Dockerfile` | Runtime image based on Valve's `steamrt/sniper/platform` |
 | `docker/entrypoint.sh` | Start logic (see below) |
-| `.github/workflows/publish.yml` | Builds and pushes `ghcr.io/unsi-leader-ai/egg-modsharp:latest` |
+| `docker/Dockerfile.installer` | Install container for the egg's install script: official `debian:trixie-slim` with the script's tools baked in, so no `apt-get` runs while a server installs |
+| `.github/workflows/publish.yml` | Builds and pushes `ghcr.io/unsi-leader-ai/egg-modsharp:latest` and `ghcr.io/unsi-leader-ai/egg-modsharp-installer:latest` |
 
 ## What happens on every server start
 
@@ -83,11 +84,12 @@ alone. The version marker is only written after a complete deploy, so a
 failed or interrupted update is retried on the next start. Gamedata stays
 current automatically in the meantime.
 
-## Building the image locally
+## Building the images locally
 
 ```bash
 docker build -f docker/Dockerfile -t ghcr.io/unsi-leader-ai/egg-modsharp:latest .
+docker build -f docker/Dockerfile.installer -t ghcr.io/unsi-leader-ai/egg-modsharp-installer:latest .
 ```
 
-CI builds and pushes the image on every push to `main`
+CI builds and pushes both images on every push to `main`
 (and via manual workflow dispatch).
