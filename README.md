@@ -1,8 +1,8 @@
-# Modsharp WS — Pterodactyl Egg for CS2 + ModSharp
+# Modsharp WS — container image for CS2 + ModSharp on Pterodactyl
 
 > [!WARNING]
-> **Private project — not for third-party use.** This repository, the egg, its
-> scripts and the container image `ghcr.io/unsi-leader-ai/egg-modsharp` are
+> **Private project — not for third-party use.** This repository, its scripts
+> and the container image `ghcr.io/unsi-leader-ai/egg-modsharp` are
 > published solely for our own infrastructure. **Use by anyone else is not
 > permitted** — see [LICENSE](LICENSE). Everything is provided **AS IS**,
 > without warranty of any kind, and we accept **no liability whatsoever** for
@@ -11,18 +11,19 @@
 > running it can break your server. If you use it anyway, contrary to the
 > license, you do so entirely at your own risk.
 
-A Pterodactyl egg and Docker image for running a Counter-Strike 2 dedicated
-server with the [ModSharp](https://github.com/Kxnrl/modsharp-public) framework
-on Steam RT3 (sniper).
+The Docker image for running a Counter-Strike 2 dedicated server with the
+[ModSharp](https://github.com/Kxnrl/modsharp-public) framework on Steam RT3
+(sniper) under Pterodactyl. This repository holds only what builds the image.
+The egg that uses it (egg JSON, install script, tooling) is maintained
+privately in `unsi-leader-ai/egg-modsharp-ws-private` and is not published;
+the revisions up to September 2026 remain in this repository's history.
 
 ## Contents
 
 | Path | Purpose |
 |---|---|
-| `egg/egg-modsharp-ws.json` | PTDL_v2 egg — import this in the panel (Admin → Nests → Import Egg) |
 | `docker/Dockerfile` | Runtime image based on Valve's `steamrt/sniper/platform` |
 | `docker/entrypoint.sh` | Start logic (see below) |
-| `install/install.sh` | Install script (also embedded in the egg JSON) |
 | `.github/workflows/publish.yml` | Builds and pushes `ghcr.io/unsi-leader-ai/egg-modsharp:latest` |
 
 ## What happens on every server start
@@ -50,6 +51,8 @@ A failed download in steps 3–5 keeps the existing installation and the server
 still starts.
 
 ## Variables
+
+Set by the egg; the entrypoint reads them from the environment.
 
 | Variable | Default | Meaning |
 |---|---|---|
