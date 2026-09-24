@@ -13,8 +13,10 @@
 #                                        overwritten, only seeded when missing)
 #   4. gamedata refresh from master     (when MODSHARP_GAMEDATA_UPDATE=1)
 #   5. .NET runtime                     (only when DOTNET_CHANNEL != marker)
-#   5b. no loadable module in sharp/modules = start plain CS2 for this run
-#                                       (ModSharp cannot init without one)
+#   5b. no loadable module in sharp/modules = warn loudly and start anyway
+#                                       (ModSharp cannot init without one, so
+#                                        the server stays down — 'Game sharp'
+#                                        is never taken back out of gameinfo.gi)
 #   6. build the final startup line and run the server
 #
 # Steps 3-5 are transactional: downloads are staged and only swapped in on
@@ -372,11 +374,17 @@ fi
 # (SharpModuleManager.LoadModules returns false -> "Failed to init ModSharp!")
 # and the engine then parks instead of serving — the server never comes up.
 # That is the normal state right after a bare deploy (MODSHARP_SKIP_DEFAULTS=1)
-# and after an operator emptied modules/. Start plain CS2 for this run instead:
-# take 'Game sharp' out of gameinfo.gi, so the server reaches Running and the
-# operator can deploy. Step 2 patches it back in on the first start that finds
-# a module. "Loadable" mirrors the framework's own test: a folder that is not
-# disabled and holds a <name>.deps.json next to its <name>.dll.
+# and after an operator emptied modules/, but it also happens when a crash or a
+# broken deploy leaves modules/ unreadable.
+#
+# Operator decision 2026-09-24: 'Game sharp' is NEVER taken back out of
+# gameinfo.gi. A server that silently comes up as plain CS2 — panel green,
+# framework gone — hides the fault and serves players a wrong server; failing
+# to init and staying offline is the wanted behaviour. So this step only names
+# the state in the console and starts the server as it is.
+#
+# "Loadable" mirrors the framework's own test: a folder that is not disabled
+# and holds a <name>.deps.json next to its <name>.dll.
 has_loadable_module() {
     local dir deps
     for dir in "${SHARP_DIR}/modules"/*/; do
@@ -391,17 +399,8 @@ has_loadable_module() {
     return 1
 }
 if [ -d "${SHARP_DIR}/bin" ] && ! has_loadable_module; then
-    msg "WARNING: sharp/modules holds no loadable module — ModSharp cannot init without one and the server would never come up."
-    if [ -f "${GAMEINFO_FILE}" ] && grep -qE "${GAMEINFO_MATCH}" "${GAMEINFO_FILE}"; then
-        if grep -vE "${GAMEINFO_MATCH}" "${GAMEINFO_FILE}" > "${GAMEINFO_FILE}.tmp" && mv "${GAMEINFO_FILE}.tmp" "${GAMEINFO_FILE}"; then
-            msg "WARNING: starting CS2 WITHOUT ModSharp for this run ('Game sharp' removed from gameinfo.gi). Deploy your modules to sharp/modules and restart — ModSharp is switched back on automatically."
-        else
-            rm -f "${GAMEINFO_FILE}.tmp"
-            msg "WARNING: could not rewrite gameinfo.gi — starting with ModSharp anyway; expect 'Failed to init ModSharp!'."
-        fi
-    else
-        msg "WARNING: starting CS2 WITHOUT ModSharp for this run. Deploy your modules to sharp/modules and restart."
-    fi
+    msg "WARNING: sharp/modules holds no loadable module — ModSharp cannot init without one ('Failed to init ModSharp!') and this server will NOT come up."
+    msg "WARNING: 'Game sharp' stays in gameinfo.gi — the server is left to fail instead of quietly running without ModSharp. Deploy your modules to sharp/modules and restart."
 fi
 
 # ---------------------------------------------------------------------------
