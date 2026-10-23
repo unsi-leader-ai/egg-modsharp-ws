@@ -11,7 +11,8 @@
 #                                        install only when target != marker;
 #                                        sharp/configs + sharp/modules are never
 #                                        overwritten, only seeded when missing)
-#   4. gamedata refresh from master     (when MODSHARP_GAMEDATA_UPDATE=1)
+#   4. gamedata refresh from the        (when MODSHARP_GAMEDATA_UPDATE=1;
+#      installed release tag            custom build / unknown = kept)
 #   5. .NET runtime                     (only when DOTNET_CHANNEL != marker)
 #   5b. no loadable module in sharp/modules = warn loudly and start anyway
 #                                       (ModSharp cannot init without one, so
@@ -295,13 +296,30 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. gamedata refresh from master (no build required)
+# 4. gamedata refresh from the INSTALLED release tag (no build required)
 # ---------------------------------------------------------------------------
-if [ "${MODSHARP_GAMEDATA_UPDATE:-1}" = "1" ]; then
+# The gamedata must match the libmodsharp.so on disk: the binary resolves its
+# keys at boot and stops with a FatalError when one is missing. master is NOT
+# a safe source — upstream removes keys there before the next release
+# (2026-10-23: master dropped CCSPlayer_MovementServices::TracePlayerBBox and
+# CGameEntitySystem::FindEntityClassByClassname, git-197 still requires both
+# ⇒ "Cant find address", the server stayed down). So the refresh follows the
+# marker, i.e. what step 3 actually left installed — not the target it may
+# have failed to reach. A custom build brings its own gamedata in its zip and
+# a marker without a release tag names no matching source: both keep the
+# gamedata on disk.
+installed_ms="$(cat "${MS_MARKER}" 2>/dev/null || echo none)"
+if [ "${MODSHARP_GAMEDATA_UPDATE:-1}" != "1" ]; then
+    msg "gamedata auto-update disabled (MODSHARP_GAMEDATA_UPDATE=0)."
+elif [[ "${installed_ms}" == custom:* ]]; then
+    msg "custom ModSharp build installed — gamedata refresh skipped (the build's own gamedata stays)."
+elif ! [[ "${installed_ms}" =~ ^[A-Za-z0-9._-]{1,32}$ ]] || [ "${installed_ms}" = "none" ]; then
+    msg "WARNING: installed ModSharp version unknown (marker: ${installed_ms}) — gamedata refresh skipped, existing files kept."
+else
     mkdir -p "${SHARP_DIR}/gamedata"
     updated=0
     for f in "${GAMEDATA_FILES[@]}"; do
-        url="https://raw.githubusercontent.com/${MS_REPO}/master/.asset/gamedata/${f}.games.jsonc"
+        url="https://raw.githubusercontent.com/${MS_REPO}/${installed_ms}/.asset/gamedata/${f}.games.jsonc"
         # Stage next to the target (same filesystem) so mv is an atomic rename
         # and a failed/killed download can never truncate a live gamedata file.
         tmp="${SHARP_DIR}/gamedata/.${f}.games.jsonc.tmp"
@@ -311,7 +329,7 @@ if [ "${MODSHARP_GAMEDATA_UPDATE:-1}" = "1" ]; then
         else
             rc=$?
             rm -f "${tmp}"
-            msg "WARNING: gamedata ${f}.games.jsonc not downloadable — keeping existing file."
+            msg "WARNING: gamedata ${f}.games.jsonc not downloadable for ${installed_ms} — keeping existing file."
             # 7 = connection refused/unreachable, 28 = timeout: don't stall the
             # start by retrying the same dead network five more times.
             if [ "${rc}" -eq 7 ] || [ "${rc}" -eq 28 ]; then
@@ -320,9 +338,7 @@ if [ "${MODSHARP_GAMEDATA_UPDATE:-1}" = "1" ]; then
             fi
         fi
     done
-    msg "gamedata refreshed from master (${updated}/${#GAMEDATA_FILES[@]} files)."
-else
-    msg "gamedata auto-update disabled (MODSHARP_GAMEDATA_UPDATE=0)."
+    msg "gamedata refreshed from release ${installed_ms} (${updated}/${#GAMEDATA_FILES[@]} files)."
 fi
 
 # ---------------------------------------------------------------------------

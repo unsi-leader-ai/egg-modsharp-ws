@@ -35,9 +35,13 @@ the revisions up to September 2026 remain in this repository's history.
 3. **ModSharp binaries + extensions** — installed only when `MODSHARP_VERSION`
    differs from the installed version (marker file `.ms-version`).
    `sharp/configs/` and `sharp/modules/` are **never touched** by updates.
-4. **Gamedata refresh** — when `MODSHARP_GAMEDATA_UPDATE=1`, the six
-   `*.games.jsonc` files are fetched fresh from the `modsharp-public` master
-   branch (plain JSON, no build required)
+4. **Gamedata refresh** — when `MODSHARP_GAMEDATA_UPDATE=1`, the
+   `*.games.jsonc` files are fetched fresh from the `modsharp-public` release
+   tag that is **installed** (`.ms-version`), so they always match the
+   binaries on disk. Not from master: upstream removes gamedata keys there
+   before the next release, and a release binary that misses a key it needs
+   does not boot. A custom build (`MODSHARP_CUSTOM_URL`) keeps the gamedata
+   from its own zip; an unknown marker keeps the files on disk
 5. **.NET runtime** — the portable runtime lives in `game/sharp/runtime`
    (Steam RT3 cannot use a system-wide .NET); reinstalled only when
    `DOTNET_CHANNEL` changes
@@ -65,7 +69,7 @@ Set by the egg; the entrypoint reads them from the environment.
 | `SRCDS_APPID` | `730` | not editable |
 | `GAME_TYPE` / `GAME_MODE` | `0` / `0` | `+game_type` / `+game_mode` (0/0 casual, 0/1 competitive, 0/2 wingman, 1/0 arms race, 1/2 deathmatch, 3/0 custom) |
 | `MODSHARP_VERSION` | – | a release tag (e.g. `git-168`) = exactly that version, older ones included; `latest` = opt-in auto-update, every start installs the newest release when it changed (lookup fails = installed version stays); empty = binaries are never touched |
-| `MODSHARP_GAMEDATA_UPDATE` | `1` | gamedata refresh from master on every start |
+| `MODSHARP_GAMEDATA_UPDATE` | `1` | gamedata refresh on every start from the installed release tag (custom build: kept) |
 | `MODSHARP_SKIP_DEFAULTS` | `0` | `1` = install/update ModSharp without its default modules and shared defaults (incl. extensions); `modules/` and `shared/` are created empty for your own deploy, configs (incl. the boot-required `core.json`) still seed. ModSharp cannot init without at least one loadable module, so as long as `sharp/modules` holds none the server does not come up: the entrypoint says so in the console and leaves `Game sharp` in `gameinfo.gi` — it never starts plain CS2 behind your back. |
 | `DOTNET_CHANNEL` | `10.0` | .NET runtime channel (set `11.0` to switch later) |
 | `DUAL_ADDON` | – | one workshop ID (digits only); empty = flag omitted |
@@ -85,8 +89,9 @@ is out, and a failed lookup keeps what is installed. The entrypoint downloads
 (stale framework files are removed), merges `shared/ locales/ gamedata/`
 (custom shared libraries survive) and leaves `configs/` and `modules/`
 alone. The version marker is only written after a complete deploy, so a
-failed or interrupted update is retried on the next start. Gamedata stays
-current automatically in the meantime.
+failed or interrupted update is retried on the next start. Gamedata follows
+the installed release; a gamedata fix arrives with the next release (with
+`latest`, on the next start after it is out).
 
 ## Building the images locally
 
